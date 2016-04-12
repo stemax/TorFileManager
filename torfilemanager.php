@@ -5,7 +5,7 @@ class Config
 {
     static public $folder_img = 'http://findicons.com/files/icons/552/aqua_candy_revolution/16/security_folder_black.png';
     static public $file_img = 'http://findicons.com/files/icons/743/rumax_ip/16/registry_file.png';
-    static public $date_format = 'Y-m-d H:i:s';
+    static public $date_format = 'd M y H:i:s';
     static public $ds = DIRECTORY_SEPARATOR;
 }
 
@@ -13,7 +13,7 @@ class Processing
 {
     public static function replaceSeparators($address = '')
     {
-        return str_replace(['//',], ['/'], str_replace(Config::$ds, '/', $address));
+        return str_replace(['//','\\'], ['/','/'], str_replace(Config::$ds, '/', $address));
     }
 }
 
@@ -39,6 +39,9 @@ class FileManager
                 $folder_info->atime = date(Config::$date_format, $folder->getATime());
                 $folder_info->mtime = date(Config::$date_format, $folder->getMTime());
                 $folder_info->fileinfo = $folder->getFileInfo();
+                $folder_info->isr = $folder->isReadable();
+                $folder_info->isw = $folder->isWritable();
+                $folder_info->ise = $folder->isExecutable();
                 $folders[] = $folder_info;
             }
         }
@@ -60,6 +63,9 @@ class FileManager
                 $file_info->atime = date(Config::$date_format, $file->getATime());
                 $file_info->mtime = date(Config::$date_format, $file->getMTime());
                 $file_info->fileinfo = $file->getFileInfo();
+                $file_info->isr = $file->isReadable();
+                $file_info->isw = $file->isWritable();
+                $file_info->ise = $file->isExecutable();
                 $files[] = $file_info;
             }
         }
@@ -85,13 +91,17 @@ if (isset($_REQUEST['folder'])) {
     $path = $doc_root . Config::$ds;
     if (sizeof($pre_folders)) {
         $path .= implode(Config::$ds, $pre_folders);
+    }else{
+
+        $path .= $path_folder;
     }
-    $path .= $path_folder;
+    //echo $path; die;
     if (!file_exists($path)) {
         $path = $doc_root;
     }
 }
 
+$path = Processing::replaceSeparators($path);
 $folders = FileManager::getFolders($path);
 $files = FileManager::getFiles($path);
 
@@ -127,21 +137,29 @@ $files = FileManager::getFiles($path);
         <table class="table table-hover">
             <tr>
                 <th>Title</th>
-                <th>Created/Modified</th>
-                <th>Owner/Permissions</th>
+                <th>Created</th>
+                <th>Owner/Permissions [Read|Write|Execute]</th>
+                <th>Modified</th>
             </tr>
             <?php
             foreach ($folders as $folder) {
                 ?>
                 <tr>
                     <td>
-                        <a href="?folder=<?= $folder->name; ?>&prefolders=<?= implode(Config::$ds, $pre_folders); ?>">
+                        <a href="?folder=<?= $folder->name; ?><?= count($pre_folders)?('&prefolders='.implode(',', $pre_folders)):''; ?>">
                             <img src="<?= Config::$folder_img; ?>"
                                  alt="<?= $folder->type . ': ' . $folder->name; ?>"/><?= $folder->name; ?>
                         </a>
                     </td>
-                    <td><?= $folder->ctime . ' / ' . $folder->mtime; ?></td>
-                    <td><?= $folder->owner . ' / ' . $folder->perms; ?></td>
+                    <td><?= '<span class="label label-default">' . $folder->ctime . '</span> '?></td>
+                    <td><?= '<span class="label label-primary">' . $folder->owner . '</span> <span class="label label-info">' . $folder->perms . '</span>'; ?>
+                        [ <?= ($folder->isr ? '<span class="label label-success">R</span>' : '<span class="label label-default">UR</span>')
+                        . ' | ' .
+                        ($folder->isw ? '<span class="label label-success">W</span>' : '<span class="label label-default">UW</span>')
+                        ?>
+                        ]
+                    </td>
+                    <td><?= ' <span class="label label-default">' . $folder->mtime . '</span>' ?></td>
                 </tr>
             <?php
             }
@@ -154,8 +172,16 @@ $files = FileManager::getFiles($path);
                                  alt="<?= $file->type . ': ' . $file->name; ?>"/><?= $file->name; ?>
                         </a>
                     </td>
-                    <td><?= $file->ctime . ' / ' . $file->mtime; ?></td>
-                    <td><?= $file->owner . ' / ' . $file->perms; ?></td>
+                    <td><?= '<span class="label label-default">' . $file->ctime . '</span> '?></td>
+                    <td><?= '<span class="label label-primary">' . $file->owner . '</span> <span class="label label-info">' . $file->perms . '</span>'; ?>
+                        [ <?= ($file->isr ? '<span class="label label-success">R</span>' : '<span class="label label-default">UR</span>')
+                        . ' | ' .
+                        ($file->isw ? '<span class="label label-success">W</span>' : '<span class="label label-warning">UW</span>')
+                        . ' | ' .
+                        ($file->ise ? '<span class="label label-danger">E</span>' : '<span class="label label-default">UE</span>') ?>
+                        ]
+                    </td>
+                    <td><?= ' <span class="label label-default">' . $file->mtime . '</span>' ?></td>
                 </tr>
             <?php
             }
