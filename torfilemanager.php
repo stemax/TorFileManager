@@ -15,6 +15,13 @@ class Processing
     {
         return str_replace(['//','\\'], ['/','/'], str_replace(Config::$ds, '/', $address));
     }
+
+    public static function formatBytes($bytes, $precision = 2) {
+        if (!$bytes) return '0 b';
+        $base = log($bytes, 1024);
+        $suffixes = array('b', 'Kb', 'Mb', 'Gb', 'Tb');
+        return round(pow(1024, $base - floor($base)), $precision) .' '. $suffixes[floor($base)];
+    }
 }
 
 class FileManager
@@ -138,6 +145,7 @@ $files = FileManager::getFiles($path);
             <tr>
                 <th>Title</th>
                 <th>Created</th>
+                <th>Size</th>
                 <th>Owner/Permissions [Read|Write|Execute]</th>
                 <th>Modified</th>
             </tr>
@@ -152,6 +160,7 @@ $files = FileManager::getFiles($path);
                         </a>
                     </td>
                     <td><?= '<span class="label label-default">' . $folder->ctime . '</span> '?></td>
+                    <td><?= '<span class="label label-success">' . Processing::formatBytes($folder->size) . '</span> '?></td>
                     <td><?= '<span class="label label-primary">' . $folder->owner . '</span> <span class="label label-info">' . $folder->perms . '</span>'; ?>
                         [ <?= ($folder->isr ? '<span class="label label-success">R</span>' : '<span class="label label-default">UR</span>')
                         . ' | ' .
@@ -173,6 +182,7 @@ $files = FileManager::getFiles($path);
                         </a>
                     </td>
                     <td><?= '<span class="label label-default">' . $file->ctime . '</span> '?></td>
+                    <td><?= '<span class="label label-success">' . Processing::formatBytes($file->size) . '</span> '?></td>
                     <td><?= '<span class="label label-primary">' . $file->owner . '</span> <span class="label label-info">' . $file->perms . '</span>'; ?>
                         [ <?= ($file->isr ? '<span class="label label-success">R</span>' : '<span class="label label-default">UR</span>')
                         . ' | ' .
