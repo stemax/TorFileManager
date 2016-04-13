@@ -13,19 +13,33 @@ class Processing
 {
     public static function replaceSeparators($address = '')
     {
-        return str_replace(['//','\\'], ['/','/'], str_replace(Config::$ds, '/', $address));
+        return str_replace(['//', '\\'], ['/', '/'], str_replace(Config::$ds, '/', $address));
     }
 
-    public static function formatBytes($bytes, $precision = 2) {
+    public static function formatBytes($bytes, $precision = 2)
+    {
         if (!$bytes) return '0 b';
         $base = log($bytes, 1024);
         $suffixes = array('b', 'Kb', 'Mb', 'Gb', 'Tb');
-        return round(pow(1024, $base - floor($base)), $precision) .' '. $suffixes[floor($base)];
+        return round(pow(1024, $base - floor($base)), $precision) . ' ' . $suffixes[floor($base)];
+    }
+
+    public static function sortArrayWithObjects($array, $property)
+    {
+        usort($array, function ($a, $b) {
+            if ($a->name == $b->name) {
+                return 0;
+            }
+            return ($a->name < $b->name) ? -1 : 1;
+        });
+        return $array;
     }
 }
 
 class FileManager
 {
+    private static $errors = [];
+
     public static function getRootFolder()
     {
         return Processing::replaceSeparators($_SERVER['DOCUMENT_ROOT']);
@@ -35,45 +49,62 @@ class FileManager
     {
         $folders = [];
         foreach (new \DirectoryIterator($path) as $folder) {
-            if (!$folder->isDot() && $folder->isDir()) {
-                $folder_info = new \stdClass();
-                $folder_info->name = $folder->getFilename();
-                $folder_info->size = $folder->getSize();
-                $folder_info->type = $folder->getType();
-                $folder_info->owner = $folder->getOwner();
-                $folder_info->perms = substr(sprintf('%o', $folder->getPerms()), -4);
-                $folder_info->ctime = date(Config::$date_format, $folder->getCTime());
-                $folder_info->atime = date(Config::$date_format, $folder->getATime());
-                $folder_info->mtime = date(Config::$date_format, $folder->getMTime());
-                $folder_info->fileinfo = $folder->getFileInfo();
-                $folder_info->isr = $folder->isReadable();
-                $folder_info->isw = $folder->isWritable();
-                $folder_info->ise = $folder->isExecutable();
-                $folders[] = $folder_info;
+            try {
+                if (!$folder->isDot() && $folder->isDir()) {
+                    $folder_info = new \stdClass();
+                    $folder_info->name = $folder->getFilename();
+                    $folder_info->size = $folder->getSize();
+                    $folder_info->type = $folder->getType();
+                    $folder_info->owner = $folder->getOwner();
+                    $folder_info->perms = substr(sprintf('%o', $folder->getPerms()), -4);
+                    $folder_info->ctime = date(Config::$date_format, $folder->getCTime());
+                    $folder_info->atime = date(Config::$date_format, $folder->getATime());
+                    $folder_info->mtime = date(Config::$date_format, $folder->getMTime());
+                    $folder_info->fileinfo = $folder->getFileInfo();
+                    $folder_info->isr = $folder->isReadable();
+                    $folder_info->isw = $folder->isWritable();
+                    $folder_info->ise = $folder->isExecutable();
+                    $folders[] = $folder_info;
+                }
+            } catch (\RuntimeException $e) {
+                self::$errors[] = 'Error access to: ' . $folder->getFilename();
             }
         }
         return $folders;
+    }
+
+    public static function getErrorsString()
+    {
+        $error_string = '';
+        if (sizeof(self::$errors)) foreach (self::$errors as $error) {
+            $error_string .= '<div class="alert alert-warning" role="alert">' . $error . '</div>';
+        }
+        return $error_string;
     }
 
     public static function getFiles($path = '')
     {
         $files = [];
         foreach (new \DirectoryIterator($path) as $file) {
-            if (!$file->isDot() && $file->isFile()) {
-                $file_info = new \stdClass();
-                $file_info->name = $file->getFilename();
-                $file_info->size = $file->getSize();
-                $file_info->type = $file->getType();
-                $file_info->owner = $file->getOwner();
-                $file_info->perms = substr(sprintf('%o', $file->getPerms()), -4);
-                $file_info->ctime = date(Config::$date_format, $file->getCTime());
-                $file_info->atime = date(Config::$date_format, $file->getATime());
-                $file_info->mtime = date(Config::$date_format, $file->getMTime());
-                $file_info->fileinfo = $file->getFileInfo();
-                $file_info->isr = $file->isReadable();
-                $file_info->isw = $file->isWritable();
-                $file_info->ise = $file->isExecutable();
-                $files[] = $file_info;
+            try {
+                if (!$file->isDot() && $file->isFile()) {
+                    $file_info = new \stdClass();
+                    $file_info->name = $file->getFilename();
+                    $file_info->size = $file->getSize();
+                    $file_info->type = $file->getType();
+                    $file_info->owner = $file->getOwner();
+                    $file_info->perms = substr(sprintf('%o', $file->getPerms()), -4);
+                    $file_info->ctime = date(Config::$date_format, $file->getCTime());
+                    $file_info->atime = date(Config::$date_format, $file->getATime());
+                    $file_info->mtime = date(Config::$date_format, $file->getMTime());
+                    $file_info->fileinfo = $file->getFileInfo();
+                    $file_info->isr = $file->isReadable();
+                    $file_info->isw = $file->isWritable();
+                    $file_info->ise = $file->isExecutable();
+                    $files[] = $file_info;
+                }
+            } catch (\RuntimeException $e) {
+                //echo '<div class="alert alert-warning" role="alert">Error access to: '.$file->getFilename().'</div>';
             }
         }
         return $files;
@@ -98,20 +129,19 @@ if (isset($_REQUEST['folder'])) {
     $path = $doc_root . Config::$ds;
     if (sizeof($pre_folders)) {
         $path .= implode(Config::$ds, $pre_folders);
-    }else{
+    } else {
 
         $path .= $path_folder;
     }
-    //echo $path; die;
-    if (!file_exists($path)) {
+
+    if (!@file_exists($path)) {
         $path = $doc_root;
     }
 }
 
 $path = Processing::replaceSeparators($path);
-$folders = FileManager::getFolders($path);
-$files = FileManager::getFiles($path);
-
+$folders = Processing::sortArrayWithObjects(FileManager::getFolders($path), 'name');
+$files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -131,8 +161,39 @@ $files = FileManager::getFiles($path);
     </style>
 </head>
 <body>
-
 <div class="container theme-showcase" role="main">
+    <nav class="navbar navbar-default">
+        <div class="container-fluid">
+            <!-- Brand and toggle get grouped for better mobile display -->
+            <div class="navbar-header">
+                <button type="button" class="navbar-toggle collapsed" data-toggle="collapse"
+                        data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                </button>
+                <a class="navbar-brand" href="#">TFM</a>
+            </div>
+
+            <!-- Collect the nav links, forms, and other content for toggling -->
+            <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+                <ul class="nav navbar-nav">
+                    <li class="active"><a href="#"><span class="glyphicon glyphicon-home" aria-hidden="true"></span>
+                            Home DIR<span class="sr-only">(current)</span></a></li>
+                </ul>
+                <form class="navbar-form navbar-left" role="search">
+                    <div class="form-group">
+                        <input type="text" class="form-control" placeholder="Search">
+                    </div>
+                    <button type="submit" class="btn btn-default">Submit</button>
+                </form>
+            </div>
+            <!-- /.navbar-collapse -->
+        </div>
+        <!-- /.container-fluid -->
+    </nav>
+
     <div class="panel panel-info">
         <div class="panel-heading">Current path: <strong><?= $path ?></strong></div>
         <div class="panel-body">
@@ -140,6 +201,7 @@ $files = FileManager::getFiles($path);
             <span class="label label-info">Files: <?= count($files); ?></span>
         </div>
     </div>
+    <?= FileManager::getErrorsString(); ?>
     <div class="jumbotron">
         <table class="table table-hover">
             <tr>
@@ -154,13 +216,13 @@ $files = FileManager::getFiles($path);
                 ?>
                 <tr>
                     <td>
-                        <a href="?folder=<?= $folder->name; ?><?= count($pre_folders)?('&prefolders='.implode(',', $pre_folders)):''; ?>">
+                        <a href="?folder=<?= $folder->name; ?><?= count($pre_folders) ? ('&prefolders=' . implode(',', $pre_folders)) : ''; ?>">
                             <img src="<?= Config::$folder_img; ?>"
                                  alt="<?= $folder->type . ': ' . $folder->name; ?>"/><?= $folder->name; ?>
                         </a>
                     </td>
-                    <td><?= '<span class="label label-default">' . $folder->ctime . '</span> '?></td>
-                    <td><?= '<span class="label label-success">' . Processing::formatBytes($folder->size) . '</span> '?></td>
+                    <td><?= '<span class="label label-default">' . $folder->ctime . '</span> ' ?></td>
+                    <td><?= '<span class="label label-success">' . Processing::formatBytes($folder->size) . '</span> ' ?></td>
                     <td><?= '<span class="label label-primary">' . $folder->owner . '</span> <span class="label label-info">' . $folder->perms . '</span>'; ?>
                         [ <?= ($folder->isr ? '<span class="label label-success">R</span>' : '<span class="label label-default">UR</span>')
                         . ' | ' .
@@ -181,8 +243,8 @@ $files = FileManager::getFiles($path);
                                  alt="<?= $file->type . ': ' . $file->name; ?>"/><?= $file->name; ?>
                         </a>
                     </td>
-                    <td><?= '<span class="label label-default">' . $file->ctime . '</span> '?></td>
-                    <td><?= '<span class="label label-success">' . Processing::formatBytes($file->size) . '</span> '?></td>
+                    <td><?= '<span class="label label-default">' . $file->ctime . '</span> ' ?></td>
+                    <td><?= '<span class="label label-success">' . Processing::formatBytes($file->size) . '</span> ' ?></td>
                     <td><?= '<span class="label label-primary">' . $file->owner . '</span> <span class="label label-info">' . $file->perms . '</span>'; ?>
                         [ <?= ($file->isr ? '<span class="label label-success">R</span>' : '<span class="label label-default">UR</span>')
                         . ' | ' .
