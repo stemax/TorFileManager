@@ -5,6 +5,9 @@ class Config
 {
     static public $folder_img = 'http://findicons.com/files/icons/552/aqua_candy_revolution/16/security_folder_black.png';
     static public $file_img = 'http://findicons.com/files/icons/743/rumax_ip/16/registry_file.png';
+    static public $download_img = 'http://findicons.com/files/icons/141/toolbar_icons_6_by_ruby_softwar/16/download.png';
+    static public $zip_img = 'http://findicons.com/files/icons/1156/fugue/16/folder_zipper.png';
+    static public $unzip_img = 'http://findicons.com/files/icons/1016/aerovista/16/comprimidos_zip.png';
     static public $date_format = 'd M y H:i:s';
     static public $ds = DIRECTORY_SEPARATOR;
 }
@@ -73,15 +76,6 @@ class FileManager
         return $folders;
     }
 
-    public static function getErrorsString()
-    {
-        $error_string = '';
-        if (sizeof(self::$errors)) foreach (self::$errors as $error) {
-            $error_string .= '<div class="alert alert-warning" role="alert">' . $error . '</div>';
-        }
-        return $error_string;
-    }
-
     public static function getFiles($path = '')
     {
         $files = [];
@@ -101,6 +95,7 @@ class FileManager
                     $file_info->isr = $file->isReadable();
                     $file_info->isw = $file->isWritable();
                     $file_info->ise = $file->isExecutable();
+                    $file_info->ext = $file->getExtension();
                     $files[] = $file_info;
                 }
             } catch (\RuntimeException $e) {
@@ -109,12 +104,54 @@ class FileManager
         }
         return $files;
     }
+
+    public static function downloadFile($file)
+    {
+        if (file_exists($file)) {
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            header('Content-Description: File Transfer');
+            header('Content-Type: application/octet-stream');
+            header('Content-Disposition: attachment; filename=' . basename($file));
+            header('Content-Transfer-Encoding: binary');
+            header('Expires: 0');
+            header('Cache-Control: must-revalidate');
+            header('Pragma: public');
+            header('Content-Length: ' . filesize($file));
+            readfile($file);
+            exit;
+        }
+    }
+
+    public static function getErrorsString()
+    {
+        $error_string = '';
+        if (sizeof(self::$errors)) foreach (self::$errors as $error) {
+            $error_string .= '<div class="alert alert-warning" role="alert">' . $error . '</div>';
+        }
+        return $error_string;
+    }
 }
+
+
+
+$path = $action = '';
+$path_file = $path_folder = '';
+$home_url = 'http://' .$_SERVER['HTTP_HOST'].$_SERVER['PHP_SELF'];
+$up_url = '';
+$pre_folders = [];
 
 $doc_root = FileManager::getRootFolder();
 
-$path = $doc_root;
-$pre_folders = [];
+//Initialise variables from REQUEST
+if (isset($_REQUEST['action'])) {
+    $action = $_REQUEST['action'];
+
+    if (isset($_REQUEST['file'])) {
+        $path_file = $_COOKIE['TOR_PATH'].'/'.$_REQUEST['file'];
+    }
+}
 
 if (isset($_REQUEST['prefolders'])) {
     $pre_folders = explode(',', $_REQUEST['prefolders']);
@@ -137,9 +174,32 @@ if (isset($_REQUEST['folder'])) {
     if (!@file_exists($path)) {
         $path = $doc_root;
     }
-}
 
+    if (sizeof($pre_folders))
+    {
+        $up_folders = $pre_folders;
+        array_pop($up_folders);
+        $up_folder = array_pop($up_folders);
+        if ($up_folder) {
+            $up_url = '?folder=' . $up_folder . (count($up_folders) ? ('&prefolders=' . implode(',', $up_folders)) : '');
+        }else
+        {
+            $up_url = $home_url;
+        }
+    }
+
+} else $path = $doc_root;
+
+//
+switch ($action) {
+    case 'download':
+        FileManager::downloadFile($path_file);
+        break;
+    default:
+        break;
+}
 $path = Processing::replaceSeparators($path);
+setcookie("TOR_PATH",$path);
 $folders = Processing::sortArrayWithObjects(FileManager::getFolders($path), 'name');
 $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
 ?>
@@ -161,6 +221,9 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
     </style>
 </head>
 <body>
+<?php
+//echo '<pre> SMT DEBUG: '; print_R($_SERVER); echo'</pre>';
+?>
 <div class="container theme-showcase" role="main">
     <nav class="navbar navbar-default">
         <div class="container-fluid">
@@ -173,21 +236,25 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
                     <span class="icon-bar"></span>
                     <span class="icon-bar"></span>
                 </button>
-                <a class="navbar-brand" href="#">TFM</a>
+                <a class="navbar-brand" href="<?= $home_url; ?>">TFM</a>
             </div>
 
             <!-- Collect the nav links, forms, and other content for toggling -->
             <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
                 <ul class="nav navbar-nav">
-                    <li class="active"><a href="#"><span class="glyphicon glyphicon-home" aria-hidden="true"></span>
-                            Home DIR<span class="sr-only">(current)</span></a></li>
+                    <li><a href="<?= $home_url; ?>"><span class="glyphicon glyphicon-home" aria-hidden="true"></span> Home<span class="sr-only">(current)</span></a>
+                    </li>
+                    <?php if ($up_url){
+                        ?>
+                        <li><a href="<?= $up_url; ?>"><span class="glyphicon glyphicon-circle-arrow-up" aria-hidden="true"></span> Up</a></li>
+                    <?php
+                    }?>
+                    <?php if (isset($_SERVER['HTTP_REFERER'])){
+                        ?>
+                        <li><a href="<?= $_SERVER['HTTP_REFERER']; ?>"><span class="glyphicon glyphicon-circle-arrow-left" aria-hidden="true"></span> Back</a></li>
+                    <?php
+                    }?>
                 </ul>
-                <form class="navbar-form navbar-left" role="search">
-                    <div class="form-group">
-                        <input type="text" class="form-control" placeholder="Search">
-                    </div>
-                    <button type="submit" class="btn btn-default">Submit</button>
-                </form>
             </div>
             <!-- /.navbar-collapse -->
         </div>
@@ -210,6 +277,7 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
                 <th>Size</th>
                 <th>Owner/Permissions [Read|Write|Execute]</th>
                 <th>Modified</th>
+                <th>Download/Zip</th>
             </tr>
             <?php
             foreach ($folders as $folder) {
@@ -231,6 +299,11 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
                         ]
                     </td>
                     <td><?= ' <span class="label label-default">' . $folder->mtime . '</span>' ?></td>
+                    <td>
+                        <a href="?action=to_zip&folder=<?= $folder->name; ?>">
+                            <img src="<?= Config::$zip_img; ?>" alt="<?= $folder->type . ': ' . $folder->name; ?>"/>
+                        </a>
+                    </td>
                 </tr>
             <?php
             }
@@ -254,6 +327,15 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
                         ]
                     </td>
                     <td><?= ' <span class="label label-default">' . $file->mtime . '</span>' ?></td>
+                    <td>
+                        <a href="?action=download&file=<?= $file->name; ?>"><img
+                                src="<?= Config::$download_img; ?>" alt="<?= $file->type . ': ' . $file->name; ?>"/></a>
+                        <?php if ($file->ext == 'zip') { ?>
+                            <a href="?action=extract_zip&file=<?= $file->name; ?>"><img
+                                    src="<?= Config::$unzip_img; ?>"
+                                    alt="<?= $folder->type . ': ' . $folder->name; ?>"/></a>
+                        <?php } ?>
+                    </td>
                 </tr>
             <?php
             }
