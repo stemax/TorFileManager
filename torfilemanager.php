@@ -42,6 +42,7 @@ class Processing
 class FileManager
 {
     private static $errors = [];
+    private static $messages = [];
 
     public static function getRootFolder()
     {
@@ -121,6 +122,62 @@ class FileManager
             header('Content-Length: ' . filesize($file));
             readfile($file);
             exit;
+        }else {
+            self::$errors[] = 'Download: Not found ' . $file;
+            return false;
+        }
+    }
+
+    public static function convertFolderToZip($folder_path = '', $zip_path = '')
+    {
+        if (!$zip_path) {
+            $zip_path = self::getRootFolder() . '/zip_files';
+            if (!file_exists($zip_path)) {
+                if (!mkdir($zip_path, 0777)) {
+                    self::$errors[] = 'ZIP: I couldn\'t create zip files folder ' . $zip_path;
+                    return false;
+                }
+            }
+        }
+
+        $zip = new \ZipArchive();
+        $ret = $zip->open($zip_path, \ZIPARCHIVE::CREATE | \ZIPARCHIVE::OVERWRITE);
+        if ($ret !== TRUE) {
+            self::$errors[] = 'ZIP: Failed with code '.$ret.($zip->getStatusString());
+        } else {
+            $options = array('add_path' => $folder_path, 'remove_all_path' => TRUE);
+            if ($zip->addGlob('*.*', GLOB_BRACE, $options))
+            {
+                self::$messages[] = "ZIP: $folder_path transfer to $zip_path";
+            }
+            $zip->close();
+        }
+    }
+
+    public static function extractZip($file_path = '', $extract_path = '')
+    {
+        if (!file_exists($file_path) || !is_file($file_path)) {
+            self::$errors[] = 'ZIP: Not found in ' . $file_path;
+            return false;
+        }
+        if (!$extract_path) {
+            $extract_path = self::getRootFolder() . '/zip_extract';
+            if (!file_exists($extract_path)) {
+                if (!mkdir($extract_path, 0755)) {
+                    self::$errors[] = 'ZIP: I couldn\'t create extract folder ' . $extract_path;
+                    return false;
+                }
+            }
+        }
+        $zip = new \ZipArchive;
+        $res = $zip->open($file_path);
+        if ($res === TRUE) {
+            $zip->extractTo($extract_path);
+            $zip->close();
+            self::$messages[] = "ZIP: $file_path extracted to $extract_path";
+        } else {
+            self::$errors[] = 'ZIP: I couldn\'t open' . $file_path;
+            return false;
         }
     }
 
@@ -132,13 +189,21 @@ class FileManager
         }
         return $error_string;
     }
-}
 
+    public static function getMessagesString()
+    {
+        $messages_string = '';
+        if (sizeof(self::$messages)) foreach (self::$messages as $message) {
+            $messages_string .= '<div class="alert alert-success" role="success">' . $message . '</div>';
+        }
+        return $messages_string;
+    }
+}
 
 
 $path = $action = '';
 $path_file = $path_folder = '';
-$home_url = 'http://' .$_SERVER['HTTP_HOST'].$_SERVER['PHP_SELF'];
+$home_url = 'http://' . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
 $up_url = '';
 $pre_folders = [];
 
@@ -149,7 +214,7 @@ if (isset($_REQUEST['action'])) {
     $action = $_REQUEST['action'];
 
     if (isset($_REQUEST['file'])) {
-        $path_file = $_COOKIE['TOR_PATH'].'/'.$_REQUEST['file'];
+        $path_file = $_COOKIE['TOR_PATH'] . '/' . $_REQUEST['file'];
     }
 }
 
@@ -175,31 +240,38 @@ if (isset($_REQUEST['folder'])) {
         $path = $doc_root;
     }
 
-    if (sizeof($pre_folders))
-    {
+    if (sizeof($pre_folders)) {
         $up_folders = $pre_folders;
         array_pop($up_folders);
         $up_folder = array_pop($up_folders);
         if ($up_folder) {
             $up_url = '?folder=' . $up_folder . (count($up_folders) ? ('&prefolders=' . implode(',', $up_folders)) : '');
-        }else
-        {
+        } else {
             $up_url = $home_url;
         }
     }
 
 } else $path = $doc_root;
 
-//
+//Switch actions:
 switch ($action) {
     case 'download':
         FileManager::downloadFile($path_file);
+        break;
+    case 'to_zip':
+        if (isset($_REQUEST['zipfolder'])) {
+            $folder_path = $_COOKIE['TOR_PATH'] . '/' .$_REQUEST['zipfolder'];
+            FileManager::convertFolderToZip($folder_path);
+        }
+        break;
+    case 'extract_zip':
+        FileManager::extractZip($path_file);
         break;
     default:
         break;
 }
 $path = Processing::replaceSeparators($path);
-setcookie("TOR_PATH",$path);
+setcookie("TOR_PATH", $path);
 $folders = Processing::sortArrayWithObjects(FileManager::getFolders($path), 'name');
 $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
 ?>
@@ -221,13 +293,9 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
     </style>
 </head>
 <body>
-<?php
-//echo '<pre> SMT DEBUG: '; print_R($_SERVER); echo'</pre>';
-?>
 <div class="container theme-showcase" role="main">
     <nav class="navbar navbar-default">
         <div class="container-fluid">
-            <!-- Brand and toggle get grouped for better mobile display -->
             <div class="navbar-header">
                 <button type="button" class="navbar-toggle collapsed" data-toggle="collapse"
                         data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
@@ -238,27 +306,22 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
                 </button>
                 <a class="navbar-brand" href="<?= $home_url; ?>">TFM</a>
             </div>
-
-            <!-- Collect the nav links, forms, and other content for toggling -->
             <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
                 <ul class="nav navbar-nav">
-                    <li><a href="<?= $home_url; ?>"><span class="glyphicon glyphicon-home" aria-hidden="true"></span> Home<span class="sr-only">(current)</span></a>
+                    <li><a href="<?= $home_url; ?>"><span class="glyphicon glyphicon-home" aria-hidden="true"></span>
+                            Home<span class="sr-only">(current)</span></a>
                     </li>
-                    <?php if ($up_url){
+                    <?php if ($up_url) {
                         ?>
-                        <li><a href="<?= $up_url; ?>"><span class="glyphicon glyphicon-circle-arrow-up" aria-hidden="true"></span> Up</a></li>
+                        <li><a href="<?= $up_url; ?>"><span class="glyphicon glyphicon-circle-arrow-up"
+                                                            aria-hidden="true"></span> Up</a></li>
                     <?php
                     }?>
-                    <?php if (isset($_SERVER['HTTP_REFERER'])){
-                        ?>
-                        <li><a href="<?= $_SERVER['HTTP_REFERER']; ?>"><span class="glyphicon glyphicon-circle-arrow-left" aria-hidden="true"></span> Back</a></li>
-                    <?php
-                    }?>
+                    <li><a href="javascript:void(0)" onclick="location.reload();"><span
+                                class="glyphicon glyphicon-refresh" aria-hidden="true"></span> Refresh</a></li>
                 </ul>
             </div>
-            <!-- /.navbar-collapse -->
         </div>
-        <!-- /.container-fluid -->
     </nav>
 
     <div class="panel panel-info">
@@ -269,6 +332,7 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
         </div>
     </div>
     <?= FileManager::getErrorsString(); ?>
+    <?= FileManager::getMessagesString(); ?>
     <div class="jumbotron">
         <table class="table table-hover">
             <tr>
@@ -300,7 +364,7 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
                     </td>
                     <td><?= ' <span class="label label-default">' . $folder->mtime . '</span>' ?></td>
                     <td>
-                        <a href="?action=to_zip&folder=<?= $folder->name; ?>">
+                        <a href="?action=to_zip&zipfolder=<?= $folder->name; ?>">
                             <img src="<?= Config::$zip_img; ?>" alt="<?= $folder->type . ': ' . $folder->name; ?>"/>
                         </a>
                     </td>
