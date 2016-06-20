@@ -43,6 +43,8 @@ class FileManager
 {
     private static $errors = [];
     private static $messages = [];
+    private static $zip_files_added = 0;
+    private static $zip_folders_added = 0;
 
     public static function getRootFolder()
     {
@@ -148,20 +150,28 @@ class FileManager
         if ($ret !== TRUE) {
             self::$errors[] = 'ZIP: Failed with code ' . $ret . ($zip->getStatusString());
         } else {
+            self::$zip_folders_added = self::$zip_files_added = 0;
             $first_folders = self::getFolders($folder_path);
             if (sizeof($first_folders)) {
                 foreach ($first_folders as $ff) {
-                    $zip->addEmptyDir($ff->name);
-                    $zip = self::addSubFolderContentToZip($folder_path, $ff->name, '', $zip);
+                    if ($zip->addEmptyDir($ff->name))
+                    {
+                        self::$zip_folders_added++;
+                        $zip = self::addSubFolderContentToZip($folder_path, $ff->name, '', $zip);
+                    }
                 }
             }
             $first_files = self::getFiles($folder_path);
             if (sizeof($first_files)) {
                 foreach ($first_files as $ff) {
-                    $zip->addFile($folder_path . '/' . $ff->name, $ff->name);
+                    if ($zip->addFile($folder_path . '/' . $ff->name, $ff->name))
+                    {
+                        self::$zip_files_added++;
+                    }
                 }
             }
-            self::$messages[] = "ZIP: $folder_path transfer to $zip_path";
+
+            self::$messages[] = "ZIP: $folder_path transfer to $zip_path [Zipped ".self::$zip_folders_added." folder(s) and ".self::$zip_files_added." file(s)]";
 
             $zip->close();
         }
@@ -175,7 +185,10 @@ class FileManager
         if (sizeof($folders)) {
             foreach ($folders as $ff) {
                 //echo 'Added : ' . $pre_path . '/' . $ff->name . ' <br/>';
-                $zip->addEmptyDir($pre_path . '/' . $ff->name);
+                if ($zip->addEmptyDir($pre_path . '/' . $ff->name))
+                {
+                    self::$zip_folders_added++;
+                }
                 //echo 'Continue parsing to  : ' . $folder_path . '/' . $active_folder . '/' . $ff->name . ' <br/>';
                 $zip = self::addSubFolderContentToZip($folder_path . '/' . $active_folder, $ff->name, $pre_path, $zip);
             }
@@ -183,8 +196,10 @@ class FileManager
         $files = self::getFiles($folder_path . '/' . $active_folder);
         if (sizeof($files)) {
             foreach ($files as $ff) {
-                //echo 'Added : ' . $pre_path . '/' . $ff->name . ' <br/>';
-                $zip->addFile($folder_path . '/' . $active_folder .'/'. $ff->name, $pre_path . '/' . $ff->name);
+                if ( $zip->addFile($folder_path . '/' . $active_folder .'/'. $ff->name, $pre_path . '/' . $ff->name) )
+                {
+                    self::$zip_files_added++;
+                }
             }
         }
         return $zip;
