@@ -122,7 +122,7 @@ class FileManager
             header('Content-Length: ' . filesize($file));
             readfile($file);
             exit;
-        }else {
+        } else {
             self::$errors[] = 'Download: Not found ' . $file;
             return false;
         }
@@ -139,19 +139,55 @@ class FileManager
                 }
             }
         }
-
+        //echo $folder_path.'<br/>';
         $zip = new \ZipArchive();
-        $ret = $zip->open($zip_path, \ZIPARCHIVE::CREATE | \ZIPARCHIVE::OVERWRITE);
+        $zip_name = substr($folder_path, (strrpos($folder_path, '/') + 1)) . '.zip';
+        //echo $zip_name.'<br/>';
+        if (file_exists($zip_path . '/' . $zip_name)) unlink($zip_path . '/' . $zip_name);
+        $ret = $zip->open($zip_path . '/' . $zip_name, \ZipArchive::OVERWRITE | \ZipArchive::CREATE | \ZipArchive::EXCL);
         if ($ret !== TRUE) {
-            self::$errors[] = 'ZIP: Failed with code '.$ret.($zip->getStatusString());
+            self::$errors[] = 'ZIP: Failed with code ' . $ret . ($zip->getStatusString());
         } else {
-            $options = array('add_path' => $folder_path, 'remove_all_path' => TRUE);
-            if ($zip->addGlob('*.*', GLOB_BRACE, $options))
-            {
-                self::$messages[] = "ZIP: $folder_path transfer to $zip_path";
+            $first_folders = self::getFolders($folder_path);
+            if (sizeof($first_folders)) {
+                foreach ($first_folders as $ff) {
+                    $zip->addEmptyDir($ff->name);
+                    $zip = self::addSubFolderContentToZip($folder_path, $ff->name, '', $zip);
+                }
             }
+            $first_files = self::getFiles($folder_path);
+            if (sizeof($first_files)) {
+                foreach ($first_files as $ff) {
+                    $zip->addFile($folder_path . '/' . $ff->name, $ff->name);
+                }
+            }
+            self::$messages[] = "ZIP: $folder_path transfer to $zip_path";
+
             $zip->close();
         }
+    }
+
+    protected static function addSubFolderContentToZip($folder_path, $active_folder, $pre_path, $zip)
+    {
+        //echo 'Work with subfolder: ' . $folder_path . '/' . $active_folder . ' <br/>';
+        $pre_path .= ($pre_path ? '/' : '') . $active_folder;
+        $folders = self::getFolders($folder_path . '/' . $active_folder);
+        if (sizeof($folders)) {
+            foreach ($folders as $ff) {
+                //echo 'Added : ' . $pre_path . '/' . $ff->name . ' <br/>';
+                $zip->addEmptyDir($pre_path . '/' . $ff->name);
+                //echo 'Continue parsing to  : ' . $folder_path . '/' . $active_folder . '/' . $ff->name . ' <br/>';
+                $zip = self::addSubFolderContentToZip($folder_path . '/' . $active_folder, $ff->name, $pre_path, $zip);
+            }
+        }
+        $files = self::getFiles($folder_path . '/' . $active_folder);
+        if (sizeof($files)) {
+            foreach ($files as $ff) {
+                //echo 'Added : ' . $pre_path . '/' . $ff->name . ' <br/>';
+                $zip->addFile($folder_path . '/' . $active_folder .'/'. $ff->name, $pre_path . '/' . $ff->name);
+            }
+        }
+        return $zip;
     }
 
     public static function extractZip($file_path = '', $extract_path = '')
@@ -260,7 +296,7 @@ switch ($action) {
         break;
     case 'to_zip':
         if (isset($_REQUEST['zipfolder'])) {
-            $folder_path = $_COOKIE['TOR_PATH'] . '/' .$_REQUEST['zipfolder'];
+            $folder_path = $_COOKIE['TOR_PATH'] . '/' . $_REQUEST['zipfolder'];
             FileManager::convertFolderToZip($folder_path);
         }
         break;
