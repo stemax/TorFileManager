@@ -8,8 +8,11 @@ class Config
     static public $download_img = 'http://findicons.com/files/icons/141/toolbar_icons_6_by_ruby_softwar/16/download.png';
     static public $zip_img = 'http://findicons.com/files/icons/1156/fugue/16/folder_zipper.png';
     static public $unzip_img = 'http://findicons.com/files/icons/1016/aerovista/16/comprimidos_zip.png';
+    static public $delete_img = 'http://findicons.com/files/icons/139/toolbar_icons_2_by_ruby_softwar/16/delete.png';
     static public $date_format = 'd M y H:i:s';
     static public $ds = DIRECTORY_SEPARATOR;
+    static public $zip_extract_folder = 'zip_extract';
+    static public $zip_folder = 'zip_files';
 }
 
 class Processing
@@ -23,7 +26,7 @@ class Processing
     {
         if (!$bytes) return '0 b';
         $base = log($bytes, 1024);
-        $suffixes = array('b', 'Kb', 'Mb', 'Gb', 'Tb');
+        $suffixes = ['b', 'Kb', 'Mb', 'Gb', 'Tb'];
         return round(pow(1024, $base - floor($base)), $precision) . ' ' . $suffixes[floor($base)];
     }
 
@@ -130,10 +133,24 @@ class FileManager
         }
     }
 
+    public static function deleteFile($file)
+    {
+        if (file_exists($file)) {
+            if (unlink($file))
+            {
+                self::$messages[] = "File: ".$file." successfully deleted.";
+                return true;
+            }
+        } else {
+            self::$errors[] = 'File not found: ' . $file;
+            return false;
+        }
+    }
+
     public static function convertFolderToZip($folder_path = '', $zip_path = '')
     {
         if (!$zip_path) {
-            $zip_path = self::getRootFolder() . '/zip_files';
+            $zip_path = self::getRootFolder() . Config::$ds . Config::$zip_folder;
             if (!file_exists($zip_path)) {
                 if (!mkdir($zip_path, 0777)) {
                     self::$errors[] = 'ZIP: I couldn\'t create zip files folder ' . $zip_path;
@@ -154,8 +171,7 @@ class FileManager
             $first_folders = self::getFolders($folder_path);
             if (sizeof($first_folders)) {
                 foreach ($first_folders as $ff) {
-                    if ($zip->addEmptyDir($ff->name))
-                    {
+                    if ($zip->addEmptyDir($ff->name)) {
                         self::$zip_folders_added++;
                         $zip = self::addSubFolderContentToZip($folder_path, $ff->name, '', $zip);
                     }
@@ -164,14 +180,13 @@ class FileManager
             $first_files = self::getFiles($folder_path);
             if (sizeof($first_files)) {
                 foreach ($first_files as $ff) {
-                    if ($zip->addFile($folder_path . '/' . $ff->name, $ff->name))
-                    {
+                    if ($zip->addFile($folder_path . '/' . $ff->name, $ff->name)) {
                         self::$zip_files_added++;
                     }
                 }
             }
 
-            self::$messages[] = "ZIP: $folder_path transfer to $zip_path [Zipped ".self::$zip_folders_added." folder(s) and ".self::$zip_files_added." file(s)]";
+            self::$messages[] = "ZIP: $folder_path transfer to $zip_path [Zipped " . self::$zip_folders_added . " folder(s) and " . self::$zip_files_added . " file(s)]";
 
             $zip->close();
         }
@@ -185,8 +200,7 @@ class FileManager
         if (sizeof($folders)) {
             foreach ($folders as $ff) {
                 //echo 'Added : ' . $pre_path . '/' . $ff->name . ' <br/>';
-                if ($zip->addEmptyDir($pre_path . '/' . $ff->name))
-                {
+                if ($zip->addEmptyDir($pre_path . '/' . $ff->name)) {
                     self::$zip_folders_added++;
                 }
                 //echo 'Continue parsing to  : ' . $folder_path . '/' . $active_folder . '/' . $ff->name . ' <br/>';
@@ -196,8 +210,7 @@ class FileManager
         $files = self::getFiles($folder_path . '/' . $active_folder);
         if (sizeof($files)) {
             foreach ($files as $ff) {
-                if ( $zip->addFile($folder_path . '/' . $active_folder .'/'. $ff->name, $pre_path . '/' . $ff->name) )
-                {
+                if ($zip->addFile($folder_path . '/' . $active_folder . '/' . $ff->name, $pre_path . '/' . $ff->name)) {
                     self::$zip_files_added++;
                 }
             }
@@ -211,8 +224,14 @@ class FileManager
             self::$errors[] = 'ZIP: Not found in ' . $file_path;
             return false;
         }
+
+        $zip_folder_name = str_replace('.zip','',substr(strrchr($file_path, '/'), 1));
+        if (!$zip_folder_name) {
+            self::$errors[] = 'ZIP: Can\'t generate folder name. ' . $file_path;
+            return false;
+        }
         if (!$extract_path) {
-            $extract_path = self::getRootFolder() . '/zip_extract';
+            $extract_path = self::getRootFolder() . Config::$ds . Config::$zip_extract_folder. Config::$ds.$zip_folder_name;
             if (!file_exists($extract_path)) {
                 if (!mkdir($extract_path, 0755)) {
                     self::$errors[] = 'ZIP: I couldn\'t create extract folder ' . $extract_path;
@@ -309,14 +328,20 @@ switch ($action) {
     case 'download':
         FileManager::downloadFile($path_file);
         break;
+    case 'delete':
+        FileManager::deleteFile($path_file);
+        $path = $_COOKIE['TOR_PATH'];
+        break;
     case 'to_zip':
         if (isset($_REQUEST['zipfolder'])) {
             $folder_path = $_COOKIE['TOR_PATH'] . '/' . $_REQUEST['zipfolder'];
             FileManager::convertFolderToZip($folder_path);
+            $path = $doc_root . Config::$ds . Config::$zip_folder;
         }
         break;
     case 'extract_zip':
         FileManager::extractZip($path_file);
+        $path = $doc_root . Config::$ds . Config::$zip_extract_folder;
         break;
     default:
         break;
@@ -392,7 +417,7 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
                 <th>Size</th>
                 <th>Owner/Permissions [Read|Write|Execute]</th>
                 <th>Modified</th>
-                <th>Download/Zip</th>
+                <th>Download [Remove/Zip]</th>
             </tr>
             <?php
             foreach ($folders as $folder) {
@@ -445,6 +470,8 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
                     <td>
                         <a href="?action=download&file=<?= $file->name; ?>"><img
                                 src="<?= Config::$download_img; ?>" alt="<?= $file->type . ': ' . $file->name; ?>"/></a>
+                        <a href="?action=delete&file=<?= $file->name; ?>"  onclick="return confirm('Are you sure you want to delete this file?');"><img
+                                src="<?= Config::$delete_img; ?>" alt="<?= $file->type . ': ' . $file->name; ?>"/></a>
                         <?php if ($file->ext == 'zip') { ?>
                             <a href="?action=extract_zip&file=<?= $file->name; ?>"><img
                                     src="<?= Config::$unzip_img; ?>"
