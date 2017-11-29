@@ -30,13 +30,13 @@ class Processing
         return round(pow(1024, $base - floor($base)), $precision) . ' ' . $suffixes[floor($base)];
     }
 
-    public static function sortArrayWithObjects($array, $property)
+    public static function sortArrayWithObjects($array, $property = 'name')
     {
-        usort($array, function ($a, $b) {
-            if ($a->name == $b->name) {
+        usort($array, function ($a, $b) use ($property) {
+            if ($a->$property == $b->$property) {
                 return 0;
             }
-            return ($a->name < $b->name) ? -1 : 1;
+            return ($a->$property < $b->$property) ? -1 : 1;
         });
         return $array;
     }
@@ -136,9 +136,8 @@ class FileManager
     public static function deleteFile($file)
     {
         if (file_exists($file)) {
-            if (unlink($file))
-            {
-                self::$messages[] = "File: ".$file." successfully deleted.";
+            if (unlink($file)) {
+                self::$messages[] = "File: " . $file . " successfully deleted.";
                 return true;
             }
         } else {
@@ -225,13 +224,13 @@ class FileManager
             return false;
         }
 
-        $zip_folder_name = str_replace('.zip','',substr(strrchr($file_path, '/'), 1));
+        $zip_folder_name = str_replace('.zip', '', substr(strrchr($file_path, '/'), 1));
         if (!$zip_folder_name) {
             self::$errors[] = 'ZIP: Can\'t generate folder name. ' . $file_path;
             return false;
         }
         if (!$extract_path) {
-            $extract_path = self::getRootFolder() . Config::$ds . Config::$zip_extract_folder. Config::$ds.$zip_folder_name;
+            $extract_path = self::getRootFolder() . Config::$ds . Config::$zip_extract_folder . Config::$ds . $zip_folder_name;
             if (!file_exists($extract_path)) {
                 if (!mkdir($extract_path, 0755)) {
                     self::$errors[] = 'ZIP: I couldn\'t create extract folder ' . $extract_path;
@@ -346,6 +345,7 @@ switch ($action) {
     default:
         break;
 }
+/*
 $path = Processing::replaceSeparators($path);
 setcookie("TOR_PATH", $path);
 $folders = Processing::sortArrayWithObjects(FileManager::getFolders($path), 'name');
@@ -491,3 +491,4 @@ $files = Processing::sortArrayWithObjects(FileManager::getFiles($path), 'name');
         crossorigin="anonymous"></script>
 </body>
 </html>
+*/
